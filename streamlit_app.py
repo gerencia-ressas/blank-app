@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit as st
 
 def apply_custom_styles():
     st.markdown("""
@@ -154,6 +153,34 @@ def plot_profiles(df: pd.DataFrame):
     )
     st.plotly_chart(fig, use_container_width=True)
 
+def plot_monthly_comparison(df: pd.DataFrame):
+    fig_monthly = go.Figure()
+
+    fig_monthly.add_trace(go.Bar(
+        x=df["hora"],
+        y=df["consumo_kwh"] * 30,
+        name="Consumo Mensual (kWh)",
+        marker_color='firebrick',
+        opacity=0.7
+    ))
+
+    fig_monthly.add_trace(go.Bar(
+        x=df["hora"],
+        y=df["generacion_kwh"] * 30,
+        name="Generación Mensual (kWh)",
+        marker_color='goldenrod',
+        opacity=0.7
+    ))
+
+    fig_monthly.update_layout(
+        barmode='overlay',
+        title="Comportamiento Mensual: Consumo vs Generación",
+        xaxis_title="Hora",
+        yaxis_title="kWh por mes",
+        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+    )
+    st.plotly_chart(fig_monthly, use_container_width=True)
+
 def main():
     st.markdown('<h1 style="color: #1E3A8A; text-align: center;">Simulador de Energía Solar</h1>', unsafe_allow_html=True)
     st.title("Simulador AGPE — Resolución CREG 174 (2021)")
@@ -190,6 +217,10 @@ def main():
         st.write(f"- Autoconsumida: {bill['autoconsumido_monthly']:.2f} kWh")
         st.write(f"- Exportada (excedentes): {bill['excedente_monthly']:.2f} kWh")
         st.write(f"- Importada: {bill['imported_monthly']:.2f} kWh")
+
+    st.divider()
+    st.subheader("Comportamiento Mensual Detallado")
+    plot_monthly_comparison(df)
 
     st.divider()
     st.subheader("Detalle horario (promedio diario)")
