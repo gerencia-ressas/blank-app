@@ -1,0 +1,6 @@
+[theme]
+primaryColor = "#EAB308" # solar.gold
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F1F5F9" # Un gris azulado suave tipo slate-100
+textColor = "#1E3A8A" # solar.blue-dark
+font = "sans serif" # Usaremos la del sistema, pero la forzaremos con CSS
