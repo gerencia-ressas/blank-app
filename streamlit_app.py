@@ -25,7 +25,7 @@ def apply_custom_styles():
         .block-container {
             padding-top: 0rem;
             max-width: 1200px;
-        }
+        }*/
 
         /* --- ESTILO PARA MÉTRICAS NORMALES (Abajo en el reporte) --- */
         /* Estas seguirán siendo blancas con texto negro */
