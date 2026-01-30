@@ -18,7 +18,7 @@ def apply_custom_styles():
         <style>
      
         /* Ocultar elementos default 
-        header {visibility: hidden;}*/
+        header {visibility: hidden;}
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         
