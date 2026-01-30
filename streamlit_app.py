@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+from PIL import Image
+import os
 
 # -----------------------------------------------------------------------------
 # 1. CONFIGURACIÓN DE PÁGINA (Debe ser la primera línea de Streamlit)
@@ -14,13 +16,7 @@ st.set_page_config(page_title="Simulador AGPE - CREG 174 (2021)", layout="wide")
 def apply_custom_styles():
     st.markdown("""
         <style>
-        /* Importar fuente */
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
-
-        html, body, [class*="css"], .stMarkdown, p, span, h1, h2, h3, h4 {
-            font-family: 'Outfit', sans-serif !important;
-        }
-
+     
         /* Ocultar elementos default */
         header {visibility: hidden;}
         #MainMenu {visibility: hidden;}
@@ -29,49 +25,6 @@ def apply_custom_styles():
         .block-container {
             padding-top: 0rem;
             max-width: 1200px;
-        }
-
-        /* --- BARRA AZUL DE FONDO (Sticky Background) --- */
-        .blue-bar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 200px; /* Altura de la franja azul */
-            background-color: #004aad;
-            z-index: 99;
-            border-bottom: 4px solid #eab308;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        }
-
-        /* --- CONTENIDO DEL HEADER (Texto y Métricas) --- */
-        /* Esta clase envuelve el contenido para que flote sobre la barra azul */
-        .blue-bar-content {
-            position: relative;
-            z-index: 100; /* Por encima del fondo azul */
-            padding-top: 20px;
-        }
-        
-        /* Título dentro del header */
-        .blue-bar-content h2 {
-            color: white !important;
-            margin-bottom: 1rem;
-        }
-
-        /* --- ESTILO ESPECÍFICO PARA MÉTRICAS DENTRO DEL HEADER --- */
-        /* Usamos el selector :has() para afectar solo a las métricas dentro de nuestra clase custom */
-        div[data-testid="stVerticalBlock"] > div:has(.blue-bar-content) [data-testid="stMetric"] {
-            background-color: rgba(255, 255, 255, 0.1) !important; /* Fondo semitransparente */
-            border: 1px solid rgba(255, 255, 255, 0.3) !important;
-            color: white !important;
-        }
-
-        div[data-testid="stVerticalBlock"] > div:has(.blue-bar-content) [data-testid="stMetricValue"] {
-            color: white !important;
-        }
-
-        div[data-testid="stVerticalBlock"] > div:has(.blue-bar-content) [data-testid="stMetricLabel"] p {
-            color: #e0e0e0 !important; /* Gris muy claro para etiquetas */
         }
 
         /* --- ESTILO PARA MÉTRICAS NORMALES (Abajo en el reporte) --- */
@@ -83,21 +36,7 @@ def apply_custom_styles():
             border: 1px solid #e2e8f0;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
-
-        /* --- ESPACIADOR --- */
-        /* Empuja el contenido principal hacia abajo para que no quede tapado por la barra fija */
-        .spacer {
-            margin-top: 220px;
-        }
-        
-        /* Botones */
-        .stButton>button {
-            background-color: #2563EB;
-            color: white;
-            border-radius: 8px;
-            border: none;
-        }
-        
+}
         </style>
     """, unsafe_allow_html=True)
 
@@ -256,7 +195,19 @@ def plot_monthly_comparison(df: pd.DataFrame):
 # 4. FUNCIÓN MAIN
 # -----------------------------------------------------------------------------
 def main():
-    
+    # 001. Definir la ruta al logo dentro de assets
+    # 'os.path.dirname(__file__)' ayuda a encontrar la carpeta raíz del proyecto
+    current_dir = os.path.dirname(__file__)
+    logo_path = os.path.join(current_dir, "assets", "logo ressas 572x197.jpg") # <-- Asegúrate que el nombre coincida
+
+    # 002. Insertar en el sidebar
+    with st.sidebar:
+        if os.path.exists(logo_path):
+            st.image(logo_path, use_container_width=True)
+        else:
+            # Esto te avisará si el nombre del archivo o carpeta está mal escrito
+            st.warning(f"No se encontró el logo en: {logo_path}")
+
     # 1. INPUTS (SIDEBAR)
     with st.sidebar:
         st.header("Parámetros de Simulación")
@@ -272,33 +223,19 @@ def main():
     # 2. CÁLCULOS DEL PROYECTO (Deben hacerse antes de renderizar el header)
    
     kWp = (consumo * (percent / 100)) / (30 * hsp) if (30 * hsp) > 0 else 0
-    inversion = (kWp * 3300000) / 1_000_000
+    costo_kwp = 5500000 if kWp <= 10 else 3300000
+    inversion = (kWp * costo_kwp) / 1_000_000
     gen_obj = consumo * (percent / 100)
 
- # 3. RENDERIZADO DEL HEADER AZUL
-    
-    # A) Dibujamos el fondo azul fijo (vacío)
-    st.markdown('<div class="blue-background"></div>', unsafe_allow_html=True)
-    
-    # B) Dibujamos el contenido.
-    # El CSS detectará la clase 'header-marker' y aplicará estilo a ESTE contenedor.
-    with st.container():
-        # ESTA ES LA CLAVE: El marcador invisible que activa el CSS
-        st.markdown('<span class="header-marker"></span>', unsafe_allow_html=True)
-        
-        st.markdown('<h2>🏗️ Dimensionamiento y Presupuesto</h2>', unsafe_allow_html=True)
-        
-        c1, c2, c3 = st.columns(3)
-        with c1:
-            st.metric("Tamaño del Proyecto", f"{kWp:.2f} kWp")
-        with c2:
-            st.metric("Inversión Estimada", f"$ {inversion:,.2f} M COP")
-        with c3:
-            st.metric("Generación Objetivo", f"{gen_obj:,.0f} kWh/mes")
-
-
-    # 4. ESPACIADOR (Para que el resto no quede oculto bajo el header)
-    #st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
+    # 3. inicio renderizacion  
+    st.markdown('<h2>🏗️ Dimensionamiento y Presupuesto</h2>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns(3)
+    with c1:
+        st.metric("Tamaño del Proyecto", f"{kWp:.2f} kWp")
+    with c2:
+        st.metric("Inversión Estimada", f"$ {inversion:,.2f} M COP")
+    with c3:
+        st.metric("Generación Objetivo", f"{gen_obj:,.0f} kWh/mes")
 
    
     demand = hourly_consumption_profile(consumo)
@@ -312,17 +249,6 @@ def main():
         "excedente_kwh": hourly["excedente"], "importada_kwh": hourly["importada"],
     })
 
-    # Sección de Gráficos
-    with st.expander(""):
-        st.subheader("Análisis de Comportamiento")
-        col_hourly, col_monthly = st.columns([3, 1], vertical_alignment="top") 
-    with col_hourly:
-        plot_profiles(df)
-    with col_monthly:
-        plot_monthly_comparison(df)
-
-    render_detailed_billing(bill, CU, C, precio_bolsa, hourly, consumo)
-
     with st.expander("Ver detalle horario"):
         st.subheader("Detalle horario (promedio diario)")
         st.dataframe(df.style.format({
@@ -333,5 +259,15 @@ def main():
             "importada_kwh": "{:.3f}",
         }), use_container_width=True)
 
+    # Sección de Gráficos
+    with st.expander("Graficos Comportamiento Generacion Vs Consumo"):
+        st.subheader("Análisis de Comportamiento")
+        col_hourly, col_monthly = st.columns([3, 1], vertical_alignment="top") 
+    with col_hourly:
+        plot_profiles(df)
+    with col_monthly:
+        plot_monthly_comparison(df)
+
+    render_detailed_billing(bill, CU, C, precio_bolsa, hourly, consumo)
 if __name__ == "__main__":
     main()
