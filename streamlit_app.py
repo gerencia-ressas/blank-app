@@ -17,8 +17,8 @@ def apply_custom_styles():
     st.markdown("""
         <style>
      
-        /* Ocultar elementos default */
-        header {visibility: hidden;}
+        /* Ocultar elementos default 
+        header {visibility: hidden;}*/
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         
