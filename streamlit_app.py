@@ -3,62 +3,109 @@ import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 
+# -----------------------------------------------------------------------------
+# 1. CONFIGURACIÓN DE PÁGINA (Debe ser la primera línea de Streamlit)
+# -----------------------------------------------------------------------------
+st.set_page_config(page_title="Simulador AGPE - CREG 174 (2021)", layout="wide")
+
+# -----------------------------------------------------------------------------
+# 2. ESTILOS CSS
+# -----------------------------------------------------------------------------
 def apply_custom_styles():
     st.markdown("""
         <style>
-        <style>
-        /* Ocultar la barra de estado de Streamlit (Deploy, etc) */
+        /* Importar fuente */
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
+
+        html, body, [class*="css"], .stMarkdown, p, span, h1, h2, h3, h4 {
+            font-family: 'Outfit', sans-serif !important;
+        }
+
+        /* Ocultar elementos default */
         header {visibility: hidden;}
         #MainMenu {visibility: hidden;}
         footer {visibility: hidden;}
         
-        /* Ajustar el padding superior para que no quede un hueco blanco */
         .block-container {
-            padding-top: 2rem;
-        }
-        /* Importar la fuente Outfit */
-        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
-
-        html, body, [class*="css"], .stMarkdown, p, span {
-            font-family: 'Outfit', sans-serif !important;
+            padding-top: 0rem;
+            max-width: 1200px;
         }
 
-        /* Estilizar las tarjetas de métricas */
+        /* --- BARRA AZUL DE FONDO (Sticky Background) --- */
+        .blue-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 200px; /* Altura de la franja azul */
+            background-color: #004aad;
+            z-index: 99;
+            border-bottom: 4px solid #eab308;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        /* --- CONTENIDO DEL HEADER (Texto y Métricas) --- */
+        /* Esta clase envuelve el contenido para que flote sobre la barra azul */
+        .blue-bar-content {
+            position: relative;
+            z-index: 100; /* Por encima del fondo azul */
+            padding-top: 20px;
+        }
+        
+        /* Título dentro del header */
+        .blue-bar-content h2 {
+            color: white !important;
+            margin-bottom: 1rem;
+        }
+
+        /* --- ESTILO ESPECÍFICO PARA MÉTRICAS DENTRO DEL HEADER --- */
+        /* Usamos el selector :has() para afectar solo a las métricas dentro de nuestra clase custom */
+        div[data-testid="stVerticalBlock"] > div:has(.blue-bar-content) [data-testid="stMetric"] {
+            background-color: rgba(255, 255, 255, 0.1) !important; /* Fondo semitransparente */
+            border: 1px solid rgba(255, 255, 255, 0.3) !important;
+            color: white !important;
+        }
+
+        div[data-testid="stVerticalBlock"] > div:has(.blue-bar-content) [data-testid="stMetricValue"] {
+            color: white !important;
+        }
+
+        div[data-testid="stVerticalBlock"] > div:has(.blue-bar-content) [data-testid="stMetricLabel"] p {
+            color: #e0e0e0 !important; /* Gris muy claro para etiquetas */
+        }
+
+        /* --- ESTILO PARA MÉTRICAS NORMALES (Abajo en el reporte) --- */
+        /* Estas seguirán siendo blancas con texto negro */
         [data-testid="stMetric"] {
             background-color: white;
-            padding: 20px;
-            border-radius: 12px;
+            padding: 15px;
+            border-radius: 10px;
             border: 1px solid #e2e8f0;
-            box-shadow: 0 10px 25px -5px rgba(234, 179, 8, 0.1);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }
 
-        /* Botones con color azul corporativo */
+        /* --- ESPACIADOR --- */
+        /* Empuja el contenido principal hacia abajo para que no quede tapado por la barra fija */
+        .spacer {
+            margin-top: 220px;
+        }
+        
+        /* Botones */
         .stButton>button {
             background-color: #2563EB;
             color: white;
             border-radius: 8px;
             border: none;
-            padding: 0.5rem 1rem;
-            transition: all 0.3s ease;
         }
         
-        .stButton>button:hover {
-            background-color: #1E3A8A;
-            box-shadow: 0 10px 25px -5px rgba(234, 179, 8, 0.3);
-            transform: translateY(-2px);
-        }
-
-        /* Estilo para los inputs */
-        .stNumberInput, .stSlider {
-            border-radius: 8px;
-        }
         </style>
     """, unsafe_allow_html=True)
 
-# Configuración de página al inicio absoluto
-st.set_page_config(page_title="Simulador AGPE - CREG 174 (2021)", layout="wide")
 apply_custom_styles()
 
+# -----------------------------------------------------------------------------
+# 3. LÓGICA DE CÁLCULO
+# -----------------------------------------------------------------------------
 HOUR_LABELS = [f"{h}:00" for h in range(24)]
 
 def hourly_consumption_profile(monthly_consumption_kwh: float) -> np.ndarray:
@@ -99,190 +146,192 @@ def settle_hourly(demand: np.ndarray, generation: np.ndarray) -> dict:
         "autoconsumo": autoconsumo, "excedente": excedente, "importada": importada,
     }
 
-def billing(monthly_consumption_kwh: float, hourly: dict, CU: float, C: float) -> dict:
-    cost_without = monthly_consumption_kwh * CU
-    imported_monthly = hourly["importada"].sum() * 30.0
-    excedente_monthly = hourly["excedente"].sum() * 30.0
-    cost_with = (imported_monthly * CU) - (excedente_monthly * (CU - C))
-    ahorro = cost_without - cost_with
-    ahorro_pct = (ahorro / cost_without * 100.0) if cost_without > 0 else 0.0
+def billing(monthly_consumption_kwh: float, hourly: dict, CU: float, C: float, precio_bolsa: float) -> dict:
+    autoconsumo_mes = hourly["autoconsumo"].sum() * 30.0
+    excedente_total_mes = hourly["excedente"].sum() * 30.0
+    importada_mes = hourly["importada"].sum() * 30.0
+    
+    exc_tipo1 = min(excedente_total_mes, importada_mes)
+    exc_tipo2 = max(0, excedente_total_mes - importada_mes)
+    
+    costo_sin_proyecto = monthly_consumption_kwh * CU
+    
+    valor_importada = importada_mes * CU
+    costo_intercambio_t1 = exc_tipo1 * C
+    credito_t1 = exc_tipo1 * -CU
+    credito_t2 = exc_tipo2 * -precio_bolsa
+    
+    costo_con_proyecto = valor_importada + costo_intercambio_t1 + credito_t1 + credito_t2
+    
+    ahorro_autoconsumo = autoconsumo_mes * CU
+    beneficio_neto_excedentes = abs(credito_t1 + credito_t2) - costo_intercambio_t1
+    
     return {
-        "cost_without": cost_without, "cost_with": cost_with,
-        "ahorro": ahorro, "ahorro_pct": ahorro_pct,
-        "imported_monthly": imported_monthly, "excedente_monthly": excedente_monthly,
-        "autoconsumido_monthly": hourly["autoconsumo"].sum() * 30.0,
+        "autoconsumo_mes": autoconsumo_mes,
+        "importada_mes": importada_mes,
+        "exc_tipo1": exc_tipo1,
+        "exc_tipo2": exc_tipo2,
+        "costo_sin": costo_sin_proyecto,
+        "costo_con": costo_con_proyecto,
+        "v_importada": valor_importada,
+        "v_intercambio": costo_intercambio_t1,
+        "v_credito_t1": credito_t1,
+        "v_credito_t2": credito_t2,
+        "v_ahorro_auto": ahorro_autoconsumo,
+        "v_beneficio_exc": beneficio_neto_excedentes
     }
 
-def render_detailed_billing(bill_data: dict, CU: float, C: float, precio_bolsa: float, hourly_data: dict):
-    total_consumo_mensual = bill_data["imported_monthly"] + bill_data["autoconsumido_monthly"]
-    total_excedentes_mensual = hourly_data["excedente"].sum() * 30.0
-    
-    # Excedentes Tipo 1 (hasta el límite de la energía importada)
-    excedentes_tipo1 = min(total_excedentes_mensual, bill_data["imported_monthly"])
-    # Excedentes Tipo 2 (el remanente)
-    excedentes_tipo2 = max(0.0, total_excedentes_mensual - excedentes_tipo1)
+def render_detailed_billing(bill_data: dict, CU: float, C: float, precio_bolsa: float, hourly_data: dict, consumo_mensual: float):
+    st.markdown("## 📊 Como se comporta la Factura de Energia")
+    costo_actual = bill_data["costo_sin"]
+    st.info(f"**Costo Actual de Energía (Sin Proyecto):** $ {costo_actual:,.0f} COP/mes")
 
-    st.markdown("## Resumen Económico Detallado")
     col_empresa, col_cliente = st.columns(2)
 
     with col_empresa:
-        st.markdown("### Empresa de Energía (Lo que aparece en el recibo)")
-        imp_red = bill_data["imported_monthly"] * CU
-        costo_intercambio_tipo1 = excedentes_tipo1 * C
-        credito_excedentes_tipo1 = excedentes_tipo1 * (-CU)
-        venta_tipo2 = excedentes_tipo2 * (-precio_bolsa)
-        total_factura_empresa = imp_red + costo_intercambio_tipo1 + credito_excedentes_tipo1 + venta_tipo2
+        st.markdown("### 🏢 Empresa de Energía")
+        st.caption("Cálculo de la factura mensual (lo que pagarás)")
+        
+        v_importada = bill_data["v_importada"]
+        v_intercambio = bill_data["v_intercambio"]
+        v_credito_t1 = bill_data["v_credito_t1"]
+        v_credito_t2 = bill_data["v_credito_t2"]
+        total_factura = bill_data["costo_con"]
 
-        st.markdown(f"- Importación desde la Red: **{imp_red:,.0f} COP**")
-        st.markdown(f"- Costo Intercambio Tipo 1: **{costo_intercambio_tipo1:,.0f} COP**")
-        st.markdown(f"- Crédito Excedentes Tipo 1: **{credito_excedentes_tipo1:,.0f} COP**")
-        st.markdown(f"- Venta Tipo 2: **{venta_tipo2:,.0f} COP**")
-        st.markdown(f"**Total Factura:** **{total_factura_empresa:,.0f} COP**")
+        st.write(f"➕ **Importación (Red):** $ {v_importada:,.0f}")
+        st.write(f"➕ **Costo Intercambio T1:** $ {v_intercambio:,.0f}")
+        st.write(f"➖ **Crédito Excedentes T1:** $ {abs(v_credito_t1):,.0f}")
+        st.write(f"➖ **Venta Excedentes T2:** $ {abs(v_credito_t2):,.0f}")
+        st.markdown(f"### **Total Factura:** \n# $ {total_factura:,.0f}")
 
     with col_cliente:
-        st.markdown("### Beneficio Cliente (Valor real generado)")
-        ahorro_autoconsumo = bill_data["autoconsumido_monthly"] * CU
-        ingreso_excedentes = (excedentes_tipo1 * CU) + (excedentes_tipo2 * precio_bolsa)
-        total_beneficio_mensual = ahorro_autoconsumo + ingreso_excedentes - (excedentes_tipo1 * C)
+        st.markdown("### 👤 Beneficio Cliente")
+        st.caption("Valor real generado por tu sistema")
+        
+        v_ahorro_auto = bill_data["v_ahorro_auto"]
+        v_intercambio = bill_data["v_intercambio"]
+        beneficio_neto_exc = (abs(bill_data["v_credito_t1"]) + abs(bill_data["v_credito_t2"])) - v_intercambio
+        total_beneficio = v_ahorro_auto + beneficio_neto_exc
 
-        st.markdown(f"- Ahorro por Autoconsumo: **{ahorro_autoconsumo:,.0f} COP**")
-        st.markdown(f"- Ingreso/Ahorro por Excedentes: **{ingreso_excedentes:,.0f} COP**")
-        st.markdown(f"**Total Beneficio Mensual:** **{total_beneficio_mensual:,.0f} COP**")
-
+        st.write(f"💡 **Ahorro Autoconsumo:** $ {v_ahorro_auto:,.0f}")
+        st.write(f"☀️ **Ahorro Excedentes T1:** $ {abs(bill_data['v_credito_t1']):,.0f}")
+        st.write(f"💰 **Venta Excedentes T2:** $ {abs(bill_data['v_credito_t2']):,.0f}")
+        st.write(f"⚠️ **Menos Costo Intercambio:** -$ {v_intercambio:,.0f}")
+        st.markdown(f"### **Total Ahorro Real:** \n# $ {total_beneficio:,.0f}")
 
 def plot_profiles(df: pd.DataFrame):
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df["hora"], y=df["consumo_kwh"], name="Consumo (kWh/h)", fill="tozeroy",
-        line=dict(color="firebrick"), mode="lines", opacity=0.6
-    ))
-    fig.add_trace(go.Scatter(
-        x=df["hora"], y=df["generacion_kwh"], name="Generación Solar (kWh/h)", fill="tozeroy",
-        line=dict(color="goldenrod"), mode="lines", opacity=0.6
-    ))
+    fig.add_trace(go.Scatter(x=df["hora"], y=df["consumo_kwh"], name="Consumo (kWh/h)", fill="tozeroy", line=dict(color="firebrick"), opacity=0.6))
+    fig.add_trace(go.Scatter(x=df["hora"], y=df["generacion_kwh"], name="Generación Solar (kWh/h)", fill="tozeroy", line=dict(color="goldenrod"), opacity=0.6))
     fig.update_layout(
-        title=dict(text="Perfil horario: Consumo vs Generación", x=0.02, y=0.95),
-        xaxis_title="Hora",
-        yaxis_title="kWh por hora",
+        title=dict(text="Perfil horario: Consumo vs Generación", x=0.5, y=0.05, xanchor='center', yanchor='top'),
+        xaxis_title="Hora", yaxis_title="kWh por hora",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        height=450,
-        margin=dict(t=100, b=50, l=50, r=20),
-        hovermode="x unified"
+        height=450, margin=dict(t=50, b=80, l=50, r=20), hovermode="x unified"
     )
     st.plotly_chart(fig, use_container_width=True)
+
 def plot_monthly_comparison(df: pd.DataFrame):
-    # Cálculos mensuales acumulados
     total_consumo = df["consumo_kwh"].sum() * 30
     total_autoconsumo = df["autoconsumo_kwh"].sum() * 30
     total_excedentes = df["excedente_kwh"].sum() * 30
-    
-    # Lógica de Excedentes Tipo 1 y Tipo 2 (Simplificada para el gráfico)
-    # Tipo 1: Excedentes hasta cubrir el consumo importado
-    # Tipo 2: Generación que sobra después de cubrir todo el consumo
     excedente_tipo1 = min(total_excedentes, total_consumo - total_autoconsumo)
     excedente_tipo2 = max(0, total_excedentes - excedente_tipo1)
 
-    fig_monthly = go.Figure()
+    fig = go.Figure()
+    fig.add_trace(go.Bar(x=["Consumo", "Generación"], y=[total_consumo, 0], name="Consumo Total", marker_color='firebrick'))
+    fig.add_trace(go.Bar(x=["Consumo", "Generación"], y=[0, total_autoconsumo], name="Autoconsumo", marker_color='#22C55E'))
+    fig.add_trace(go.Bar(x=["Consumo", "Generación"], y=[0, excedente_tipo1], name="Excedente Tipo 1", marker_color='goldenrod'))
+    fig.add_trace(go.Bar(x=["Consumo", "Generación"], y=[0, excedente_tipo2], name="Excedente Tipo 2", marker_color='#F59E0B'))
 
-    # Barra de Consumo (Referencia al lado)
-    fig_monthly.add_trace(go.Bar(
-        x=["Consumo", "Generación"],
-        y=[total_consumo, 0],
-        name="Consumo Total",
-        marker_color='firebrick',
-        offsetgroup=0
-    ))
-
-    # Barras Apiladas de Generación
-    # 1. Autoconsumo
-    fig_monthly.add_trace(go.Bar(
-        x=["Consumo", "Generación"],
-        y=[0, total_autoconsumo],
-        name="Autoconsumo",
-        marker_color='#22C55E', # Verde
-        offsetgroup=1
-    ))
-
-    # 2. Excedentes Tipo 1
-    fig_monthly.add_trace(go.Bar(
-        x=["Consumo", "Generación"],
-        y=[0, excedente_tipo1],
-        name="Excedente Tipo 1",
-        marker_color='goldenrod',
-        offsetgroup=1
-    ))
-
-    # 3. Excedentes Tipo 2
-    fig_monthly.add_trace(go.Bar(
-        x=["Consumo", "Generación"],
-        y=[0, excedente_tipo2],
-        name="Excedente Tipo 2",
-        marker_color='#F59E0B', # Naranja oscuro
-        offsetgroup=1
-    ))
-
-    fig_monthly.update_layout(
-        barmode='stack',
-        bargap=0.2,
-        title=dict(text="Análisis de Energía Mensual", x=0.02, y=0.95),
-        yaxis_title="kWh por mes",
-        height=450,
-        margin=dict(t=100, b=50, l=50, r=20),
+    fig.update_layout(
+        barmode='stack', bargap=0.2,
+        title=dict(text="Energía Mes Típico", x=0.5, y=0.05, xanchor='center', yanchor='top'),
+        yaxis_title="kWh por mes", height=450, margin=dict(t=50, b=80, l=50, r=20),
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
     )
-    st.plotly_chart(fig_monthly, use_container_width=True)
+    st.plotly_chart(fig, use_container_width=True)
 
+# -----------------------------------------------------------------------------
+# 4. FUNCIÓN MAIN
+# -----------------------------------------------------------------------------
 def main():
-    st.markdown('<h1 style="color: #1E3A8A; text-align: center;">Simulador de Facturación de Energía Solar</h1>', unsafe_allow_html=True)
-
-    col1, col2, col3, col4 = st.columns([1.2, 1.0, 1.0, 1.0])
-    with col1:
+    
+    # 1. INPUTS (SIDEBAR)
+    with st.sidebar:
+        st.header("Parámetros de Simulación")
         consumo = st.number_input("Consumo mensual (kWh)", min_value=0.0, value=1200.0, format="%.2f")
-    with col2:
-        percent = st.slider("Compensación solar (%)", 0, 200, 30)
-    with col3:
-        CU = st.number_input("Tarifa CU (COP/kWh)", min_value=0.0, value=700.0)
-    with col4:
-        C = st.number_input("Comercialización C (COP/kWh)", min_value=0.0, value=50.0)
-    with col4:
+        CU = st.number_input("Tarifa CU (COP/kWh)", min_value=0.0, value=720.0)
+        C = st.number_input("Comercialización C (COP/kWh)", min_value=0.0, value=56.71)
         precio_bolsa = st.number_input("Precio de Bolsa (COP/kWh)", min_value=0.0, value=210.0)
+        hsp=st.number_input("Horas Solar Pico", min_value=0.0, value=3.5)
+        
+        st.header("Ajustes de Compensación")
+        percent = st.slider("Porcentaje de compensación solar (%)", 0, 200, 100, key='percent_slider_sidebar')
 
-    st.divider()
+    # 2. CÁLCULOS DEL PROYECTO (Deben hacerse antes de renderizar el header)
+   
+    kWp = (consumo * (percent / 100)) / (30 * hsp) if (30 * hsp) > 0 else 0
+    inversion = (kWp * 3300000) / 1_000_000
+    gen_obj = consumo * (percent / 100)
 
+ # 3. RENDERIZADO DEL HEADER AZUL
+    
+    # A) Dibujamos el fondo azul fijo (vacío)
+    st.markdown('<div class="blue-background"></div>', unsafe_allow_html=True)
+    
+    # B) Dibujamos el contenido.
+    # El CSS detectará la clase 'header-marker' y aplicará estilo a ESTE contenedor.
+    with st.container():
+        # ESTA ES LA CLAVE: El marcador invisible que activa el CSS
+        st.markdown('<span class="header-marker"></span>', unsafe_allow_html=True)
+        
+        st.markdown('<h2>🏗️ Dimensionamiento y Presupuesto</h2>', unsafe_allow_html=True)
+        
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            st.metric("Tamaño del Proyecto", f"{kWp:.2f} kWp")
+        with c2:
+            st.metric("Inversión Estimada", f"$ {inversion:,.2f} M COP")
+        with c3:
+            st.metric("Generación Objetivo", f"{gen_obj:,.0f} kWh/mes")
+
+
+    # 4. ESPACIADOR (Para que el resto no quede oculto bajo el header)
+    #st.markdown('<div class="spacer"></div>', unsafe_allow_html=True)
+
+   
     demand = hourly_consumption_profile(consumo)
     generation = solar_generation_profile(consumo, percent)
     hourly = settle_hourly(demand, generation)
-    bill = billing(consumo, hourly, CU, C)
+    bill = billing(consumo, hourly, CU, C, precio_bolsa)
+    
     df = pd.DataFrame({
         "hora": HOUR_LABELS, "consumo_kwh": hourly["demand"],
         "generacion_kwh": hourly["generation"], "autoconsumo_kwh": hourly["autoconsumo"],
         "excedente_kwh": hourly["excedente"], "importada_kwh": hourly["importada"],
     })
 
-    # Sección de Gráficos alineados
-    st.subheader("Análisis de Comportamiento")
-    col_hourly, col_monthly = st.columns([3, 1], vertical_alignment="top") 
-
+    # Sección de Gráficos
+    with st.expander(""):
+        st.subheader("Análisis de Comportamiento")
+        col_hourly, col_monthly = st.columns([3, 1], vertical_alignment="top") 
     with col_hourly:
         plot_profiles(df)
-
     with col_monthly:
         plot_monthly_comparison(df)
 
-    st.divider()
+    render_detailed_billing(bill, CU, C, precio_bolsa, hourly, consumo)
 
-    render_detailed_billing(bill, CU, C, precio_bolsa, hourly)
-
-    st.divider()
     with st.expander("Ver detalle horario"):
         st.subheader("Detalle horario (promedio diario)")
-    st.dataframe(df.style.format({
-        "consumo_kwh": "{:.3f}",
-        "generacion_kwh": "{:.3f}",
-        "autoconsumo_kwh": "{:.3f}",
-        "excedente_kwh": "{:.3f}",
-        "importada_kwh": "{:.3f}",
-    }), use_container_width=True)
+        st.dataframe(df.style.format({
+            "consumo_kwh": "{:.3f}",
+            "generacion_kwh": "{:.3f}",
+            "autoconsumo_kwh": "{:.3f}",
+            "excedente_kwh": "{:.3f}",
+            "importada_kwh": "{:.3f}",
+        }), use_container_width=True)
 
 if __name__ == "__main__":
     main()
