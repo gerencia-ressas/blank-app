@@ -76,20 +76,23 @@ def apply_custom_styles():
     # Cargar imagen de fondo del proyecto 
     #Marcas de Agua para los Graficos en modo fullscreen
     current_dir = os.path.dirname(__file__)
-    logo_path = os.path.join(current_dir, "assets", "Icono ressas.jpg")
+    logo_path = os.path.join(current_dir, "assets", "logo ressas 572x197.jpg")  
+    logotxt_path = os.path.join(current_dir, "assets", "Icono ressas.jpg")
     watermark_path = os.path.join(current_dir, "assets", "Text RESsas.jpg")
     
-   
+    bin_str_logo = ""
     bin_str_bg = ""
     bin_str_watermark = ""
     # 2. Convertir imagen a base64
     if os.path.exists(logo_path):
-        bin_str_bg = get_base64_of_bin_file(logo_path)
+        bin_str_logo = get_base64_of_bin_file(logo_path)
+    if os.path.exists(logotxt_path):
+        bin_str_bg = get_base64_of_bin_file(logotxt_path)
     
     if os.path.exists(watermark_path):
         bin_str_watermark = get_base64_of_bin_file(watermark_path)  
 
-    uri_fondo = get_plotly_uri(logo_path)
+    uri_fondo = get_plotly_uri(logotxt_path)
     uri_marca_agua = get_plotly_uri(watermark_path)
 
 
@@ -119,7 +122,29 @@ def apply_custom_styles():
                 z-index: -1;
                 pointer-events: none; /* Evita que el fondo interfiera con clicks */
             }}
+         /* CAPA 2: Logo Inferior Derecha (Usando ::after) */
+            .stApp::after {{
+                content: "";
+                background-image: url("data:image/jpg;base64,{bin_str_logo}");
+                background-repeat: no-repeat;
+                background-position: bottom right;
+                background-size: 200px; /* Ajusta el tamaño deseado */
+                
+                position: fixed;
+                bottom: 20px; /* Margen desde abajo */
+                right: 20px;  /* Margen desde la derecha */
+                width: 200px; /* Debe ser igual o mayor a background-size */
+                height: 100px;
+                
+                opacity: 0.4; /* Un poco más visible que el fondo */
+                z-index: 1;   /* Por encima del fondo central */
+                pointer-events: none;
+            }}
             
+            /* Ajuste para que el fondo ignore el sidebar visualmente */
+            @media (min-width: 992px) {{
+                .stApp::before {{ margin-left: 336px; }}
+            }}   
             /* 2. LOGO SOLO EN LOS GRAFICOS*/
 
             [data-testid="stFullScreenFrame"]::after {{
@@ -163,6 +188,54 @@ def apply_custom_styles():
             border: 1px solid #e2e8f0;
             box-shadow: 0 2px 5px rgba(0,0,0,0.05);
         }}
+        
+
+        /* --- AJUSTE PARA LOS INPUTS DEL SIDEBAR --- */
+         /* --- ALINEACIÓN HORIZONTAL EN SIDEBAR --- */
+            /* Forzamos al contenedor del widget a ser una fila */
+            [data-testid="stSidebar"] .stNumberInput {{
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                margin-bottom: 10px;
+            }}
+
+            /* Ajustamos el label (texto) para que no ocupe todo el ancho */
+            [data-testid="stSidebar"] .stNumberInput label {{
+                display: flex;
+                margin-bottom: 0 !important; /* Quita el espacio de abajo del texto */
+                flex: 1 1 auto;
+                min-width: 150px; /* Asegura espacio para el nombre */
+            }}
+
+            /* Ajustamos el cuadro de entrada de número */
+            [data-testid="stSidebar"] .stNumberInput div[data-baseweb="input"] {{
+                width: 120px !important; /* Ancho fijo para los cuadritos de números */
+                flex: 0 0 auto;
+            }}
+
+            /* Opcional: Hacer la fuente un poco más pequeña para que quepa mejor */
+            [data-testid="stSidebar"] label p {{
+                font-size: 14px !important;
+            }}  
+        /* --- AJUSTE PARA LOS INPUTS DEL SIDEBAR --- */
+            /* --- MOVER LOGO AL FINAL DEL SIDEBAR --- */
+        /* Convertimos el contenedor de widgets del sidebar en un Flexbox vertical */
+        [data-testid="stSidebarUserContent"] {{
+            display: flex;
+            flex-direction: column;
+            height: 90vh; /* Ajusta la altura para que ocupe casi toda la pantalla */
+        }} 
+
+        /* Buscamos el contenedor de la imagen y le damos un margen superior automático */
+        /* Esto empuja la imagen hacia el fondo del contenedor flex */
+        [data-testid="stSidebarUserContent"] .stImage {{
+            margin-top: auto !important;
+            padding-bottom: 20px;
+        }} 
+
         </style>
         
     """, unsafe_allow_html=True)
@@ -357,15 +430,7 @@ def main():
     # 001. Definir la ruta al logo dentro de assets
     # 'os.path.dirname(__file__)' ayuda a encontrar la carpeta raíz del proyecto
     current_dir = os.path.dirname(__file__)
-    logo_path = os.path.join(current_dir, "assets", "logo ressas 572x197.jpg") # <-- Asegúrate que el nombre coincida
-
-    # 002. Insertar en el sidebar
-    with st.sidebar:
-        if os.path.exists(logo_path):
-            st.image(logo_path, use_container_width=True)
-        else:
-            # Esto te avisará si el nombre del archivo o carpeta está mal escrito
-            st.warning(f"No se encontró el logo en: {logo_path}")
+    logotxt_path = os.path.join(current_dir, "assets", "logo ressas 572x197.jpg") # <-- Asegúrate que el nombre coincida
 
     # 1. INPUTS (SIDEBAR)
     with st.sidebar:
@@ -382,6 +447,13 @@ def main():
         
         st.header("Parámetros Financieros (Ley 1715)")
         tasa_renta = st.number_input("Tasa de Renta (%)", min_value=0.0, max_value=100.0, value=35.0, step=1.0)
+     # 002. Insertar Logo en el sidebar
+     # with st.sidebar:
+     #   if os.path.exists(logotxt_path):
+     #       st.image(logotxt_path, use_container_width=True)
+     #   else:
+     #       # Esto te avisará si el nombre del archivo o carpeta está mal escrito
+     #       st.warning(f"No se encontró el logo en: {logotxt_path}")
 
     # 2. CÁLCULOS DEL PROYECTO (Deben hacerse antes de renderizar el header)
    
