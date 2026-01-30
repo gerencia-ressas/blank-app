@@ -85,22 +85,40 @@ def settle_hourly(demand: np.ndarray, generation: np.ndarray) -> dict:
         "autoconsumo": autoconsumo, "excedente": excedente, "importada": importada,
     }
 
-def billing(monthly_consumption_kwh: float, hourly: dict, CU: float, C: float, precio_bolsa: float) -> dict:
+def billing(monthly_consumption_kwh: float, hourly: dict, CU: float, C: float, precio_bolsa: float, factor_contribucion:float,) -> dict:
     autoconsumo_mes = hourly["autoconsumo"].sum() * 30.0
     excedente_total_mes = hourly["excedente"].sum() * 30.0
     importada_mes = hourly["importada"].sum() * 30.0
     
     exc_tipo1 = min(excedente_total_mes, importada_mes)
     exc_tipo2 = max(0, excedente_total_mes - importada_mes)
+
+    # --- LÓGICA DE CONTRIBUCIÓN CORREGIDA ---
+    # La contribución se cobra sobre los kWh netos (Importados - Compensados T1)
+    kwh_netos_a_pagar = max(0, importada_mes - exc_tipo1)
+    # El valor base es la tarifa CU por esos kWh netos
+    valor_base_contribucion = kwh_netos_a_pagar * CU
+    contribucion = valor_base_contribucion * (factor_contribucion / 100)
+    # ----------------------------------------
     
-    costo_sin_proyecto = monthly_consumption_kwh * CU
+    costo_sin_proyecto = monthly_consumption_kwh * CU*(1+(factor_contribucion/100))
     
     valor_importada = importada_mes * CU
+    
     costo_intercambio_t1 = exc_tipo1 * C
     credito_t1 = exc_tipo1 * -CU
     credito_t2 = exc_tipo2 * -precio_bolsa
+
+    # Ahorro de contribución por Autoconsumo (Energía que no pasó por el medidor)
+    ahorro_contrib_auto = (autoconsumo_mes * CU) * (factor_contribucion / 100)
     
-    costo_con_proyecto = valor_importada + costo_intercambio_t1 + credito_t1 + credito_t2
+    # Ahorro de contribución por Excedentes T1 (Energía compensada 1 a 1)
+    ahorro_contrib_t1 = (exc_tipo1 * CU) * (factor_contribucion / 100)
+    
+    # Total ahorro en contribución
+    total_ahorro_contribucion = ahorro_contrib_auto + ahorro_contrib_t1
+    
+    costo_con_proyecto = valor_importada + contribucion+costo_intercambio_t1 + credito_t1 + credito_t2
     
     ahorro_autoconsumo = autoconsumo_mes * CU
     beneficio_neto_excedentes = abs(credito_t1 + credito_t2) - costo_intercambio_t1
@@ -108,6 +126,7 @@ def billing(monthly_consumption_kwh: float, hourly: dict, CU: float, C: float, p
     return {
         "autoconsumo_mes": autoconsumo_mes,
         "importada_mes": importada_mes,
+        "v_contribucion":contribucion,
         "exc_tipo1": exc_tipo1,
         "exc_tipo2": exc_tipo2,
         "costo_sin": costo_sin_proyecto,
@@ -117,6 +136,7 @@ def billing(monthly_consumption_kwh: float, hourly: dict, CU: float, C: float, p
         "v_credito_t1": credito_t1,
         "v_credito_t2": credito_t2,
         "v_ahorro_auto": ahorro_autoconsumo,
+        "v_ahorro_contribucion": total_ahorro_contribucion,
         "v_beneficio_exc": beneficio_neto_excedentes
     }
 
@@ -132,12 +152,14 @@ def render_detailed_billing(bill_data: dict, CU: float, C: float, precio_bolsa: 
         st.caption("Cálculo de la factura mensual (lo que pagarás)")
         
         v_importada = bill_data["v_importada"]
+        v_contribucion= bill_data["v_contribucion"]
         v_intercambio = bill_data["v_intercambio"]
         v_credito_t1 = bill_data["v_credito_t1"]
         v_credito_t2 = bill_data["v_credito_t2"]
         total_factura = bill_data["costo_con"]
 
         st.write(f"➕ **Importación (Red):** $ {v_importada:,.0f}")
+        st.write(f"➕ **Contribucion (Red):** $ {v_contribucion:,.0f}")
         st.write(f"➕ **Costo Intercambio T1:** $ {v_intercambio:,.0f}")
         st.write(f"➖ **Crédito Excedentes T1:** $ {abs(v_credito_t1):,.0f}")
         st.write(f"➖ **Venta Excedentes T2:** $ {abs(v_credito_t2):,.0f}")
@@ -149,13 +171,15 @@ def render_detailed_billing(bill_data: dict, CU: float, C: float, precio_bolsa: 
         
         v_ahorro_auto = bill_data["v_ahorro_auto"]
         v_intercambio = bill_data["v_intercambio"]
+        v_ahorro_impuestos = bill_data["v_ahorro_contribucion"]
         beneficio_neto_exc = (abs(bill_data["v_credito_t1"]) + abs(bill_data["v_credito_t2"])) - v_intercambio
-        total_beneficio = v_ahorro_auto + beneficio_neto_exc
+        total_beneficio = v_ahorro_auto + beneficio_neto_exc+v_ahorro_impuestos
 
         st.write(f"💡 **Ahorro Autoconsumo:** $ {v_ahorro_auto:,.0f}")
         st.write(f"☀️ **Ahorro Excedentes T1:** $ {abs(bill_data['v_credito_t1']):,.0f}")
         st.write(f"💰 **Venta Excedentes T2:** $ {abs(bill_data['v_credito_t2']):,.0f}")
         st.write(f"⚠️ **Menos Costo Intercambio:** -$ {v_intercambio:,.0f}")
+        st.write(f"📉 **Ahorro Contribución (20%):** $ {v_ahorro_impuestos:,.0f}")
         st.markdown(f"### **Total Ahorro Real:** \n# $ {total_beneficio:,.0f}")
 
 def plot_profiles(df: pd.DataFrame):
@@ -213,6 +237,7 @@ def main():
         st.header("Parámetros de Simulación")
         consumo = st.number_input("Consumo mensual (kWh)", min_value=0.0, value=1200.0, format="%.2f")
         CU = st.number_input("Tarifa CU (COP/kWh)", min_value=0.0, value=720.0)
+        factor_contribucion= st.number_input("Contribucion (%/kWh)", min_value=0.0, value=20.0)
         C = st.number_input("Comercialización C (COP/kWh)", min_value=0.0, value=56.71)
         precio_bolsa = st.number_input("Precio de Bolsa (COP/kWh)", min_value=0.0, value=210.0)
         hsp=st.number_input("Horas Solar Pico", min_value=0.0, value=3.5)
@@ -241,7 +266,7 @@ def main():
     demand = hourly_consumption_profile(consumo)
     generation = solar_generation_profile(consumo, percent)
     hourly = settle_hourly(demand, generation)
-    bill = billing(consumo, hourly, CU, C, precio_bolsa)
+    bill = billing(consumo, hourly, CU, C, precio_bolsa, factor_contribucion)
     
     df = pd.DataFrame({
         "hora": HOUR_LABELS, "consumo_kwh": hourly["demand"],
